@@ -1,55 +1,51 @@
 # omt-h264
 
-Proposition non adoptée pour ajouter **H.264** comme second codec vidéo au
-protocole [OMT (Open Media Transport)](https://github.com/openmediatransport),
-en complément de VMX1 — pensée pour les liaisons Wi-Fi partagées où le
-budget de bande passante est la contrainte dominante (ex. plusieurs
-téléphones diffusant simultanément sur une même box).
+An unadopted proposal to add **H.264** as a second video codec to the
+[OMT (Open Media Transport)](https://github.com/openmediatransport) protocol,
+alongside VMX1 — aimed at shared Wi-Fi links where bandwidth budget is the
+dominant constraint (e.g. several phones broadcasting at once over the same
+router).
 
-**Ce dépôt est de la documentation, pas du code.** Il décrit le format de
-trame, le FourCC, le modèle de débit et surtout la question de négociation
-de capacités qui n'a pas de réponse dans le protocole actuel — voir
-[SPEC.md](SPEC.md) pour le détail technique complet.
+**This repo is documentation, not code.** It describes the frame format,
+the FourCC, the bitrate model, and above all the capability negotiation
+question that the current protocol leaves unanswered — see [SPEC.md](SPEC.md)
+for the full technical detail.
 
-## Pourquoi pas de code ici
+## Why there's no code here
 
-L'implémentation d'émission vit dans un SDK Android propriétaire
-(`blue-broadcast/omt-android`), qui n'est pas un dépôt public. Ce que ce
-dépôt donne à la place :
+The sending implementation lives in a proprietary Android SDK
+(`blue-broadcast/omt-android`), which isn't a public repo. What this repo
+gives instead:
 
-- la spécification du format de trame (suffisante pour ré-implémenter le
-  côté émission ou réception indépendamment),
-- une **release APK** signée de l'app de démonstration
-  (`blue-broadcast/sample-app`) pour tester l'émission H.264 en conditions
-  réelles, sans avoir accès au code du SDK,
-- la partie réception, elle, **est** ouverte : fork MIT de `libomtnet` +
-  fork GPL-2.0 du plugin OBS OMT, tous deux dans l'organisation
-  `blue-broadcast`.
+- the frame format specification (enough to reimplement either the sending
+  or receiving side independently),
+- a signed **release APK** of the demo app (`blue-broadcast/sample-app`) to
+  test H.264 sending under real conditions, without access to the SDK code,
+- the receiving side, on the other hand, **is** open: an MIT fork of
+  `libomtnet` plus a GPL-2.0 fork of the OMT OBS plugin, both in the
+  `blue-broadcast` organization.
 
-## Tester
+## Trying it out
 
-1. Récupérer la dernière release de ce dépôt (APK).
-2. L'installer sur un téléphone Android (minSdk 24).
-3. Dans les réglages de l'app, choisir le codec **H.264** et une
-   résolution/qualité.
-4. Démarrer la diffusion — la source apparaît comme une source OMT
-   standard sur le réseau local.
-5. Côté récepteur : OBS + le plugin OMT forké
-   (`blue-broadcast/omtplugin` + `blue-broadcast/libomtnet`) décode le
-   flux H.264. Un récepteur qui ne connaît que VMX1 (vMix, par exemple)
-   verra la source sans pouvoir la décoder — c'est précisément le problème
-   de négociation de capacités que [SPEC.md](SPEC.md) documente.
+1. Grab the latest release of this repo (APK).
+2. Install it on an Android phone (minSdk 24).
+3. In the app's settings, choose the **H.264** codec and a resolution/quality.
+4. Start broadcasting — the source shows up as a standard OMT source on the
+   local network.
+5. On the receiving end: OBS with the forked OMT plugin
+   (`blue-broadcast/omtplugin` + `blue-broadcast/libomtnet`) decodes the
+   H.264 stream. A receiver that only knows VMX1 (vMix, for example) will
+   see the source but won't be able to decode it — that's exactly the
+   capability negotiation gap [SPEC.md](SPEC.md) documents.
 
-## Liens
+## Links
 
-- Discussion amont : *(lien ajouté une fois postée sur
-  [openmediatransport/discussions](https://github.com/orgs/openmediatransport/discussions))*
-- [blue-broadcast/libomtnet](https://github.com/blue-broadcast/libomtnet) — réception H.264 (MIT)
-- [blue-broadcast/omtplugin](https://github.com/blue-broadcast/omtplugin) — plugin OBS (GPL-2.0)
-- [blue-broadcast/omt-android](https://github.com/blue-broadcast/omt-android) — SDK d'émission (propriétaire, non public)
+- [blue-broadcast/libomtnet](https://github.com/blue-broadcast/libomtnet) — H.264 receiving (MIT)
+- [blue-broadcast/omtplugin](https://github.com/blue-broadcast/omtplugin) — OBS plugin (GPL-2.0)
+- [blue-broadcast/omt-android](https://github.com/blue-broadcast/omt-android) — sending SDK (proprietary, not public)
 
-## Licence
+## License
 
-Texte de ce dépôt (README, SPEC) sous licence CC-BY. L'APK distribué en
-release reste soumis à la licence du SDK propriétaire qui l'a produit —
-voir les conditions d'utilisation dans l'app elle-même.
+This repo's text (README, SPEC) is CC-BY licensed. The APK distributed in
+releases stays governed by the proprietary SDK's license — see the terms
+inside the app itself.

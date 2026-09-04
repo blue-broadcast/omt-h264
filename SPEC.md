@@ -1,28 +1,27 @@
-# H.264 comme codec vidéo OMT — proposition
+# H.264 as an OMT video codec — proposal
 
-Statut : **proposition**, non adoptée en amont. Implémentée et testée de
-bout en bout (émission Android + réception OBS) dans l'écosystème
-`blue-broadcast`, distincte du SDK propriétaire lui-même (voir
-[README.md](README.md) pour ce qui est et n'est pas ouvert ici).
+Status: **proposal**, not adopted upstream. Implemented and tested end to
+end (Android sending + OBS receiving) in the `blue-broadcast` ecosystem,
+distinct from the proprietary SDK itself (see [README.md](README.md) for
+what is and isn't open here).
 
 ## Motivation
 
-Le codec vidéo natif OMT, **VMX1**, est intra-frame et vise un débit
-constant en bits par pixel, indépendant du contenu. C'est le bon choix par
-défaut pour un lien local à forte capacité (Ethernet, Wi-Fi 6 dédié) : très
-faible latence de décompression, aucune dépendance à un décodeur matériel.
+OMT's native video codec, **VMX1**, is intra-frame and targets a constant
+bits-per-pixel rate independent of content. That's the right default for a
+high-capacity local link (Ethernet, dedicated Wi-Fi 6): very low
+decompression latency, no dependency on a hardware decoder.
 
-Sur un lien Wi-Fi **partagé** entre plusieurs sources (le cas visé ici :
-plusieurs téléphones diffusant simultanément sur une même box), le budget
-de bande passante devient la contrainte dominante. H.264 avec un encodeur
-matériel (`MediaCodec` sur Android) offre, à qualité perçue comparable,
-un débit très inférieur à VMX1 pour le même contenu — au prix d'une
-compression inter-frame (latence de décodage plus élevée, dépendance à un
-décodeur H.264 côté récepteur).
+On a **shared** Wi-Fi link between multiple sources (the case this targets:
+several phones broadcasting at once over the same router), bandwidth
+budget becomes the dominant constraint. H.264 with a hardware encoder
+(`MediaCodec` on Android) delivers, at comparable perceived quality, a much
+lower bitrate than VMX1 for the same content — at the cost of inter-frame
+compression (higher decode latency, a dependency on an H.264 decoder on the
+receiving end).
 
-Cette proposition ne remplace pas VMX1 : elle ajoute H.264 comme **second
-codec vidéo possible**, à négocier ou détecter selon les capacités du
-récepteur.
+This proposal doesn't replace VMX1: it adds H.264 as a **second possible
+video codec**, to be negotiated or detected based on receiver capabilities.
 
 ## FourCC
 
@@ -30,21 +29,21 @@ récepteur.
 constexpr int32_t H264 = 0x34363248;  // ASCII "H264", little-endian
 ```
 
-Valeur choisie par analogie avec les FourCC vidéo déjà définis dans le
-protocole OMT (`VMX1`, `UYVY`, `YUY2`, `NV12`, `BGRA`) — même convention
-4 caractères ASCII empaquetés en `int32_t` little-endian. **Non réservée
-officiellement** par le projet amont ; à confirmer ou faire arbitrer avant
-adoption, pour éviter toute collision avec un usage existant ou futur.
+Chosen by analogy with the video FourCCs already defined in the OMT
+protocol (`VMX1`, `UYVY`, `YUY2`, `NV12`, `BGRA`) — same convention of
+4 ASCII characters packed into a little-endian `int32_t`. **Not officially
+reserved** by the upstream project; needs confirming or arbitrating before
+adoption, to avoid colliding with an existing or future use.
 
-## Format de trame
+## Frame format
 
-Le frame vidéo OMT standard (`FrameHeader` 16 octets + `VideoExtHeader`
-32 octets, transport TCP existant, ports 6400-6600) est réutilisé sans
-changement structurel. Seul le contenu du payload et un champ diffèrent :
+The standard OMT video frame (`FrameHeader`, 16 bytes + `VideoExtHeader`,
+32 bytes, existing TCP transport, ports 6400-6600) is reused with no
+structural change. Only the payload content and one field differ:
 
 ```c
 struct VideoExtHeader {
-    int32_t codec;         // = FourCC H264 au lieu de VMX1/UYVY/etc.
+    int32_t codec;         // = H264 FourCC instead of VMX1/UYVY/etc.
     int32_t width;
     int32_t height;
     int32_t frameRateN;
@@ -55,94 +54,92 @@ struct VideoExtHeader {
 };
 ```
 
-Le **payload** n'est plus une image décompressée (planaire ou entrelacée)
-mais une **unité d'accès H.264 Annex B** déjà compressée par l'encodeur
-matériel — telle quelle, sans ré-encapsulation supplémentaire (pas de
-conteneur type MP4/fMP4, juste le flux Annex B start-code délimité que
-produit `MediaCodec` en sortie).
+The **payload** is no longer a decompressed image (planar or interleaved)
+but an **H.264 Annex B access unit** already compressed by the hardware
+encoder — used as-is, with no further re-encapsulation (no MP4/fMP4-style
+container, just the start-code-delimited Annex B stream `MediaCodec`
+outputs).
 
-Il s'agit d'un **pass-through** : l'émetteur ne fait *aucun* traitement du
-flux H.264 au-delà de l'encapsuler dans l'en-tête OMT existant — il ne
-décode jamais lui-même ce qu'il vient d'encoder. Le coût CPU côté émission
-reste donc celui du seul encodage matériel.
+This is a **pass-through**: the sender does *no* processing of the H.264
+stream beyond wrapping it in the existing OMT header — it never decodes
+what it just encoded itself. CPU cost on the sending side is therefore just
+that of the hardware encoding.
 
-## Négociation de capacités — l'angle le plus utile de cette proposition
+## Capability negotiation — the most useful angle of this proposal
 
-**Le protocole OMT actuel n'a pas de mécanisme pour qu'un récepteur
-annonce, avant connexion, quels codecs vidéo il sait décoder.** Le
-récepteur découvre le codec effectivement utilisé en lisant
-`VideoExtHeader.codec` **après** avoir reçu la première trame vidéo — il
-n'y a pas d'étape de négociation antérieure comparable à celle qui existe
-déjà pour les canaux (`<OMTSubscribe video="true" audio="true" .../>`).
+**The current OMT protocol has no mechanism for a receiver to announce,
+before connecting, which video codecs it can decode.** The receiver
+discovers the codec actually in use by reading `VideoExtHeader.codec`
+**after** getting the first video frame — there's no negotiation step ahead
+of that, comparable to the one that already exists for channels
+(`<OMTSubscribe video="true" audio="true" .../>`).
 
-Conséquence pratique observée pendant l'implémentation : un récepteur qui
-ne sait pas décoder H.264 (ex. vMix, qui n'attend que VMX1) reçoit quand
-même les trames et ne peut que les rejeter silencieusement — pas
-d'indication à l'émetteur, pas de repli automatique.
+Practical consequence observed during implementation: a receiver that
+can't decode H.264 (vMix, for example, which only expects VMX1) still
+receives the frames and can only silently discard them — no signal back to
+the sender, no automatic fallback.
 
-Ce que l'implémentation de référence (fork `libomtnet`) a dû ajouter pour
-rester robuste face à ce manque :
+What the reference implementation (the `libomtnet` fork) had to add to
+stay robust against this gap:
 
-- Détection de disponibilité du décodeur H.264 côté récepteur avant
-  d'accepter la première trame (`OMTH264Codec.IsAvailable`, qui dépend de
-  la présence de FFmpeg) — sans négociation, ce test arrive après
-  connexion, pas avant.
-- Repli explicite en cas d'échec de décodage (`H.264 decoder waiting for
-  a keyframe` tant que le premier keyframe n'est pas arrivé), plutôt qu'un
-  crash ou un flux corrompu affiché.
+- Detecting H.264 decoder availability on the receiving end before
+  accepting the first frame (`OMTH264Codec.IsAvailable`, which depends on
+  FFmpeg being present) — without negotiation, this check happens after
+  connecting, not before.
+- An explicit fallback on decode failure (`H.264 decoder waiting for a
+  keyframe` until the first keyframe arrives), instead of a crash or a
+  corrupted stream being shown.
 
-**Proposition ouverte à la discussion** (c'est le point sur lequel des
-retours seraient les plus utiles) : étendre `<OMTSubscribe .../>` avec un
-attribut de capacités vidéo, par exemple :
+**Open for discussion** (the point where feedback would be most useful):
+extending `<OMTSubscribe .../>` with a video capability attribute, for
+example:
 
 ```xml
 <OMTSubscribe Video="true" Audio="true" VideoCodecs="VMX1,H264" />
 ```
 
-L'émetteur choisirait alors le premier codec de la liste qu'il sait
-produire, dans l'ordre de préférence du récepteur — rétrocompatible avec
-un récepteur qui n'envoie pas cet attribut (comportement actuel : VMX1
-implicite).
+The sender would then pick the first codec in the list it can produce, in
+the receiver's order of preference — backward compatible with a receiver
+that doesn't send this attribute (current behavior: VMX1 implied).
 
-## Modèle de débit (implémentation de référence)
+## Bitrate model (reference implementation)
 
-Le débit cible suit un modèle « bits par pixel » linéaire en résolution
-et en fps, séparé de celui utilisé pour VMX1 :
+The target bitrate follows a linear "bits per pixel" model in resolution
+and fps, separate from the one used for VMX1:
 
 ```
-kbps = bpp[qualité] × largeur × hauteur × fps / 1000
+kbps = bpp[quality] × width × height × fps / 1000
 ```
 
-| Qualité | bpp H.264 | bpp VMX1 (référence) |
+| Quality | H.264 bpp | VMX1 bpp (reference) |
 |---|---|---|
-| Basse   | 0.08 | 0.20 |
-| Moyenne | 0.15 | 0.36 |
-| Haute   | 0.24 | 0.65 |
+| Low     | 0.08 | 0.20 |
+| Medium  | 0.15 | 0.36 |
+| High    | 0.24 | 0.65 |
 
-Ancrages mesurés (30 fps) : 720p Haute ≈ 6,5 Mbit/s, 1080p Haute ≈
-15 Mbit/s — contre respectivement ≈ 18 et ≈ 40 Mbit/s pour VMX1 aux mêmes
-réglages. Le ratio (~2,5×) reflète le gain inter-frame typique de H.264
-face à un codec intra-frame, à qualité perçue comparable sur un contenu
-caméra live (mouvement continu, pas d'animation graphique).
+Measured anchors (30 fps): 720p High ≈ 6.5 Mbit/s, 1080p High ≈
+15 Mbit/s — versus roughly 18 and 40 Mbit/s for VMX1 at the same settings.
+The ratio (~2.5×) reflects H.264's typical inter-frame gain over an
+intra-frame codec, at comparable perceived quality on live-camera content
+(continuous motion, no graphic animation).
 
-## Ce qui n'est pas couvert par cette proposition
+## What this proposal doesn't cover
 
-- Pas de HEVC/AV1 : H.264 a été choisi pour sa disponibilité quasi
-  universelle en encodage matériel sur Android (`MediaCodec`) et en
-  décodage logiciel/matériel côté récepteurs desktop (FFmpeg).
-- Pas de renégociation dynamique en cours de flux (changement de codec à
-  chaud) : le codec est fixé au démarrage de la diffusion.
-- Pas de gestion de B-frames : l'implémentation de référence encode en
-  IPPP (pas de trames bidirectionnelles), pour garder une latence de
-  décodage minimale malgré la compression inter-frame.
+- No HEVC/AV1: H.264 was chosen for its near-universal availability in
+  hardware encoding on Android (`MediaCodec`) and in software/hardware
+  decoding on desktop receivers (FFmpeg).
+- No dynamic mid-stream renegotiation (hot codec switching): the codec is
+  fixed at the start of the broadcast.
+- No B-frame support: the reference implementation encodes IPPP (no
+  bidirectional frames), to keep decode latency minimal despite the
+  inter-frame compression.
 
-## Implémentation de référence
+## Reference implementation
 
-- **Émission** : SDK Android propriétaire (`blue-broadcast/omt-android`,
-  non ouvert ici) — `MediaCodec` H.264 matériel, pass-through vers le
-  frame OMT.
-- **Réception** : fork MIT de `libomtnet` — décodage FFmpeg
-  (`OMTH264Codec`), câblé dans un fork du plugin OBS OMT officiel.
-- **Démonstration** : APK Android signé (voir [README.md](README.md)),
-  installable sur un téléphone pour tester l'émission en conditions
-  réelles face à n'importe quel récepteur OMT existant.
+- **Sending**: proprietary Android SDK (`blue-broadcast/omt-android`, not
+  open here) — hardware H.264 `MediaCodec`, pass-through into the OMT frame.
+- **Receiving**: MIT fork of `libomtnet` — FFmpeg decoding
+  (`OMTH264Codec`), wired into a fork of the official OMT OBS plugin.
+- **Demo**: signed Android APK (see [README.md](README.md)), installable
+  on a phone to test sending under real conditions against any existing
+  OMT receiver.
